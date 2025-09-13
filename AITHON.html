@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Campus Info Chatbot</title>
+  <style>
+    :root{--bg:#f4f7fb;--card:#ffffff;--accent:#2563eb;--muted:#6b7280}
+    html,body{height:100%;margin:0;font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg)}
+    .app{max-width:980px;margin:28px auto;padding:20px}
+    .header{display:flex;align-items:center;gap:16px}
+    .logo{width:56px;height:56px;border-radius:12px;background:linear-gradient(135deg,#60a5fa,#4f46e5);display:flex;align-items:center;justify-content:center;color:white;font-weight:700}
+    h1{margin:0;font-size:20px}
+    .layout{display:grid;grid-template-columns:320px 1fr;gap:18px;margin-top:18px}
+    .panel{background:var(--card);border-radius:12px;padding:14px;box-shadow:0 6px 18px rgba(16,24,40,0.06)}
+
+    /* left sidebar */
+    .sidebar h3{margin:4px 0 8px;font-size:14px}
+    .db-search{display:flex;gap:8px}
+    .db-search input{flex:1;padding:8px;border-radius:8px;border:1px solid #e6edf6}
+    .quick-list{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+    .quick-item{padding:8px;border-radius:8px;background:#f8fafc;border:1px solid #eef2ff;cursor:pointer}
+
+    /* chat area */
+    .chat-area{display:flex;flex-direction:column;height:70vh}
+    .messages{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+    .msg{max-width:72%;padding:10px 12px;border-radius:12px;background:#eef2ff}
+    .msg.user{align-self:flex-end;background:#111827;color:white}
+    .msg.bot{align-self:flex-start;background:#f3f4f6;color:#111827}
+    .input-area{display:flex;gap:8px;padding:10px;border-top:1px solid #e6eef8}
+    .input-area input{flex:1;padding:10px;border-radius:10px;border:1px solid #d1e3ff}
+    .input-area button{background:var(--accent);color:white;padding:10px 12px;border-radius:10px;border:0;cursor:pointer}
+    .meta{font-size:12px;color:var(--muted);margin-top:8px}
+
+    .small{font-size:13px;color:var(--muted)}
+    .kbd{background:#eef2ff;padding:2px 6px;border-radius:6px;margin-left:6px;font-weight:600}
+
+    /* responsive */
+    @media (max-width:900px){.layout{grid-template-columns:1fr} .sidebar{order:2}}
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="header">
+      <div class="logo">CI</div>
+      <div>
+        <h1>Campus Info — Chatbot</h1>
+        <div class="small">Ask about schedules, facilities, dining, library services, or admin procedures.</div>
+      </div>
+    </div>
+
+    <div class="layout">
+      <aside class="panel sidebar">
+        <h3>Campus DB (local demo)</h3>
+        <div class="db-search">
+          <input id="dbQuery" placeholder="Search campus DB (example: 'library hours')" />
+          <button id="dbSearchBtn">Search</button>
+        </div>
+        <div class="quick-list" id="quickList">
+          <div class="quick-item" data-q="today's class schedule">Today's class schedule</div>
+          <div class="quick-item" data-q="library hours">Library hours</div>
+          <div class="quick-item" data-q="cafeteria menu">Cafeteria menu</div>
+          <div class="quick-item" data-q="book a lab">How to book a lab</div>
+          <div class="quick-item" data-q="contact admissions">Contact admissions</div>
+        </div>
+
+        <div style="margin-top:12px">
+          <h3>Data snapshot</h3>
+          <pre id="dbPreview" style="font-size:12px;overflow:auto;max-height:180px;background:#fafafa;padding:8px;border-radius:8px;border:1px solid #f1f5f9"></pre>
+        </div>
+      </aside>
+
+      <main class="panel chat-area">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <strong>Conversation</strong>
+          <div class="small">Server AI: <span id="serverStatus">disabled</span> <span class="kbd">Enter</span> to send</div>
+        </div>
+
+        <div class="messages" id="messages">
+          <!-- messages appear here -->
+        </div>
+
+        <div class="input-area">
+          <input id="userInput" placeholder="Ask: e.g. 'Where is the chemistry lab?'" />
+          <button id="sendBtn">Send</button>
+        </div>
+
+        <div class="meta">Tip: This HTML includes a local campus DB for demo and falls back to rule-based answers when no backend is connected. To enable conversational AI, point the variable <code>API_ENDPOINT</code> in the script to your backend (eg. /api/chat).</div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    /******************************
+     * Simple demo campus database
+     * (in a real app this would live in a server DB)
+     ******************************/
+    const campusDB = {
+      schedules: [
+        {day:'Monday',course:'CS101',time:'09:00 - 10:30',location:'Room A1',instructor:'Dr. Rao'},
+        {day:'Monday',course:'EE201',time:'11:00 - 12:30',location:'Room B2',instructor:'Prof. Mehta'},
+        {day:'Tuesday',course:'MA102',time:'10:00 - 11:30',location:'Room A3',instructor:'Dr. Singh'},
+      ],
+      facilities: {
+        'chemistry lab':{location:'Building C, 2nd Floor',hours:'08:30 - 17:30',booking:'Book via lab-portal or email lab@campus.edu'},
+        'sports complex':{location:'North Campus',hours:'06:00 - 22:00',fees:'Monthly pass ₹400'},
+        'computer lab':{location:'Library Annex',hours:'08:00 - 20:00',booking:'Walk-in or reserve online'},
+      },
+      dining: {
+        'cafeteria':{hours:'08:00 - 20:00',specials:['Monday: Dosa ₹40','Wednesday: Biryani ₹80','Friday: Pizza ₹70']},
+        'coffee_kiosk':{hours:'08:30 - 18:00',menu:['Espresso','Latte','Tea']}
+      },
+      library: {hours:'09:00 - 21:00',contact:'library@campus.edu',services:['Loan books','Study rooms','Interlibrary loan']},
+      admin: {
+        admissions:{contact:'admissions@campus.edu',procedures:['Apply online','Submit transcripts','Pay application fee']},
+        transcripts:{process:'Fill request form -> pay ₹200 -> collect in 5 working days'}
+      }
+    };
+
+    // show preview
+    document.getElementById('dbPreview').textContent = JSON.stringify(campusDB,null,2);
+
+    /******************************
+     * Chat UI helpers
+     ******************************/
+    const messagesEl = document.getElementById('messages');
+    function appendMessage(text, who='bot'){
+      const el = document.createElement('div');
+      el.className = 'msg ' + (who==='user' ? 'user' : 'bot');
+      el.innerHTML = text.replace(/\n/g,'<br>');
+      messagesEl.appendChild(el);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    /******************************
+     * Rule-based 'AI' fallback that queries campusDB
+     ******************************/
+    function localResponder(query){
+      const q = query.toLowerCase();
+      // schedules
+      if(q.includes('schedule') || q.includes('class') || q.includes('timetable')){
+        // find today's schedule if user said 'today' or default show sample
+        if(q.includes('today')){
+          const day = new Date().toLocaleString('en-US',{weekday:'long'});
+          const matches = campusDB.schedules.filter(s => s.day.toLowerCase() === day.toLowerCase());
+          if(matches.length) return matches.map(m => `${m.course} — ${m.time} @ ${m.location} (Instructor: ${m.instructor})`).join('\n');
+          return 'No scheduled classes found for ' + day + '. Here are some upcoming classes:\n' + campusDB.schedules.map(s=>`${s.day}: ${s.course} ${s.time}`).join('\n');
+        }
+        return 'You can view class schedules by day. Example:\n' + campusDB.schedules.map(s=>`${s.day}: ${s.course} ${s.time} @ ${s.location}`).join('\n');
+      }
+
+      // library
+      if(q.includes('library') || q.includes('book') || q.includes('study room')){
+        return `Library Hours: ${campusDB.library.hours}\nServices: ${campusDB.library.services.join(', ')}\nContact: ${campusDB.library.contact}`;
+      }
+
+      // dining
+      if(q.includes('caf') || q.includes('canteen') || q.includes('dine') || q.includes('menu')){
+        const c = campusDB.dining.cafeteria;
+        return `Cafeteria Hours: ${c.hours}\nToday's/Weekly specials:\n- ${c.specials.join('\n- ')}`;
+      }
+
+      // facilities
+      for(const key of Object.keys(campusDB.facilities)){
+        if(q.includes(key) || q.includes(key.split(' ')[0])){
+          const f = campusDB.facilities[key];
+          return `${key.toUpperCase()}\nLocation: ${f.location}\nHours: ${f.hours}\nBooking: ${f.booking}`;
+        }
+      }
+
+      // admin
+      if(q.includes('admission') || q.includes('transcript') || q.includes('fees') || q.includes('registrar')){
+        if(q.includes('transcript')) return `Transcripts: ${campusDB.admin.transcripts.process}`;
+        if(q.includes('admission')) return `Admissions contact: ${campusDB.admin.admissions.contact}\nSteps: ${campusDB.admin.admissions.procedures.join(' -> ')}`;
+        return 'For administrative queries you can contact the relevant office. Example: ' + Object.keys(campusDB.admin).join(', ');
+      }
+
+      // fallback small talk / unknown
+      if(q.includes('hello')||q.includes('hi')) return 'Hi! I can help with schedules, facilities, dining, library services, and admin procedures. Try: "library hours" or "how to book a lab".';
+      return null; // indicate no local match
+    }
+
+    /******************************
+     * Server integration (optional)
+     * If you host a backend AI, set API_ENDPOINT to that route.
+     * The backend is expected to accept JSON: {message: '...'} and return {reply: '...'}
+     ******************************/
+    const API_ENDPOINT = null; // set to '/api/chat' or your endpoint to enable server AI
+
+    async function askServer(query){
+      if(!API_ENDPOINT) return null;
+      try{
+        const res = await fetch(API_ENDPOINT, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:query})});
+        if(!res.ok) throw new Error('Server error');
+        const j = await res.json();
+        return j.reply || j.response || null;
+      }catch(e){
+        console.warn('Server call failed',e);
+        return null;
+      }
+    }
+
+    /******************************
+     * Main send logic: try server -> local fallback -> canned reply
+     ******************************/
+    async function handleSend(raw){
+      const text = raw.trim();
+      if(!text) return;
+      appendMessage(text,'user');
+      appendMessage('...','bot'); // placeholder while thinking
+
+      // try server if available
+      let serverResp = await askServer(text);
+      if(serverResp){
+        // replace last placeholder
+        messagesEl.lastChild.innerHTML = serverResp.replace(/\n/g,'<br>');
+        document.getElementById('serverStatus').textContent = 'enabled';
+        return;
+      }
+
+      // local rule-based
+      const local = localResponder(text);
+      if(local){
+        messagesEl.lastChild.innerHTML = local.replace(/\n/g,'<br>');
+        document.getElementById('serverStatus').textContent = 'disabled';
+        return;
+      }
+
+      // final fallback
+      messagesEl.lastChild.innerHTML = "Sorry, I don't have an answer for that yet. Try asking about 'library hours' or 'book a lab'.";
+    }
+
+    // UI wiring
+    document.getElementById('sendBtn').addEventListener('click', ()=>{handleSend(document.getElementById('userInput').value);document.getElementById('userInput').value='';});
+    document.getElementById('userInput').addEventListener('keydown', (e)=>{if(e.key==='Enter'){e.preventDefault();document.getElementById('sendBtn').click();}});
+
+    document.getElementById('dbSearchBtn').addEventListener('click', ()=>{
+      const q = document.getElementById('dbQuery').value.trim();
+      if(!q) return; appendMessage('Search campus DB: "' + q + '"','user');
+      const out = localResponder(q) || 'No results found in local demo DB.'; appendMessage(out,'bot');
+    });
+
+    document.querySelectorAll('.quick-item').forEach(el=>el.addEventListener('click', ()=>{const q=el.dataset.q;document.getElementById('userInput').value=q; document.getElementById('sendBtn').click();}));
+
+    // initial welcome
+    appendMessage('Hello — I\'m the Campus Info bot. Try asking: "library hours", "today\'s class schedule", or "how to book a lab".');
+
+    // (optional) developer helper: expose campusDB for debugging from the console
+    window.__campusDB = campusDB;
+  </script>
+</body>
+</html>
